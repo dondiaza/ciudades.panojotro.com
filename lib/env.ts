@@ -2,7 +2,8 @@ import { z } from "zod";
 
 const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
-  TRELLO_KEY: z.string().min(1, "TRELLO_KEY es obligatorio."),
+  TRELLO_KEY: z.string().min(1).optional(),
+  TRELLO_API_KEY: z.string().min(1).optional(),
   TRELLO_TOKEN: z.string().min(1, "TRELLO_TOKEN es obligatorio."),
   TRELLO_BOARD_ID: z.string().min(1, "TRELLO_BOARD_ID es obligatorio."),
   AUTH_USER: z.string().min(1, "AUTH_USER es obligatorio."),
@@ -30,4 +31,15 @@ if (!parsedEnv.success) {
   throw new Error(`Variables de entorno inválidas:\n${details}`);
 }
 
-export const env = parsedEnv.data;
+const trelloKey = parsedEnv.data.TRELLO_KEY ?? parsedEnv.data.TRELLO_API_KEY;
+
+if (!trelloKey) {
+  throw new Error(
+    "Variables de entorno inválidas:\nTRELLO_KEY o TRELLO_API_KEY es obligatorio.",
+  );
+}
+
+export const env = {
+  ...parsedEnv.data,
+  TRELLO_KEY: trelloKey,
+};
