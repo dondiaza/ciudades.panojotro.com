@@ -28,11 +28,11 @@ export async function POST(request: NextRequest) {
     if (from !== "/") {
       loginUrl.searchParams.set("from", from);
     }
-    return NextResponse.redirect(loginUrl, { status: 303 });
+    return NextResponse.redirect(loginUrl, 303);
   }
 
   const token = await createSessionToken(username);
-  const response = NextResponse.redirect(new URL(from, request.url), { status: 303 });
+  const response = NextResponse.redirect(new URL(from, request.url), 303);
   response.cookies.set(buildSessionCookie(token));
   return response;
 }
