@@ -1,12 +1,12 @@
 import Link from "next/link";
 
-import { Dashboard } from "@/components/Dashboard";
+import { CityGallery } from "@/components/CityGallery";
 import { RefreshButton } from "@/components/RefreshButton";
 import { getTrelloDashboardData } from "@/lib/trello";
 
 export const dynamic = "force-dynamic";
 
-export default async function HomePage() {
+export default async function GalleryPage() {
   const result = await getTrelloDashboardData()
     .then((data) => ({ data, error: null as string | null }))
     .catch((error) => ({
@@ -36,43 +36,26 @@ export default async function HomePage() {
   return (
     <main className="mx-auto min-h-screen max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
       <header className="mb-6 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-slate-200 bg-white p-4">
-        <div className="space-y-1">
-          <h1 className="text-2xl font-bold text-slate-900">Ciudades - Trello</h1>
-          <p className="text-sm text-slate-600">
-            Tablero: <span className="font-mono">{data.boardId}</span> | Modo ciudad:{" "}
-            <span className="font-semibold">{data.cityModeResolved}</span> | Campo ciudad:{" "}
-            <span className="font-semibold">{data.cityFieldName}</span>
-          </p>
-          <p className="text-xs text-slate-500">
-            Ultima sincronizacion: {new Date(data.fetchedAt).toLocaleString("es-ES")}
-          </p>
-          <div className="mt-2 flex flex-wrap gap-2 text-xs">
+        <div className="space-y-2">
+          <h1 className="text-2xl font-bold text-slate-900">Galeria de Portadas</h1>
+          <div className="flex flex-wrap gap-2 text-xs">
             <span className="rounded-md bg-slate-100 px-2 py-1 text-slate-700">
               Total disenos: {data.totals.totalDesigns}
-            </span>
-            <span className="rounded-md bg-red-100 px-2 py-1 text-red-700">
-              Caducados: {data.totals.overdueDesigns}
-            </span>
-            <span className="rounded-md bg-amber-100 px-2 py-1 text-amber-700">
-              Proximos {data.upcomingDays} dias: {data.totals.upcomingDesigns}
-            </span>
-            <span className="rounded-md bg-slate-200 px-2 py-1 text-slate-700">
-              Sin caducidad: {data.totals.noDueDesigns}
             </span>
             <span className="rounded-md bg-indigo-100 px-2 py-1 text-indigo-700">
               Indefinidos: {data.totals.undefinedDesigns}
             </span>
           </div>
-          <nav className="mt-2 flex flex-wrap gap-2 text-sm">
-            <span className="rounded-md bg-slate-800 px-3 py-1.5 font-semibold text-white">
-              Vista tablero
-            </span>
+          <nav className="flex flex-wrap gap-2 text-sm">
             <Link
-              href="/galeria"
+              href="/"
               className="rounded-md border border-slate-300 px-3 py-1.5 text-slate-700 transition hover:bg-slate-100"
             >
-              Vista galeria
+              Vista tablero
             </Link>
+            <span className="rounded-md bg-slate-800 px-3 py-1.5 font-semibold text-white">
+              Vista galeria
+            </span>
           </nav>
         </div>
 
@@ -89,7 +72,7 @@ export default async function HomePage() {
         </div>
       </header>
 
-      <Dashboard data={data} />
+      <CityGallery data={data} />
     </main>
   );
 }

@@ -7,6 +7,7 @@ import type {
   CityResolutionMode,
   DashboardStats,
   DueCategory,
+  LabelCounter,
   TrelloCustomFieldScalar,
   TrelloCustomFieldValue,
   TrelloDashboardData,
@@ -29,6 +30,22 @@ const WORKFLOW_HINTS = [
   "en progreso",
   "hecho",
   "bloqueado",
+];
+
+const UNDEFINED_LABEL_HINTS = [
+  "indefinido",
+  "indefinida",
+  "undefined",
+  "sin definir",
+];
+
+const DESIGNER_FIELD_HINTS = [
+  "disenador",
+  "designer",
+  "autor",
+  "author",
+  "artista",
+  "illustrator",
 ];
 
 class TrelloApiError extends Error {
@@ -78,6 +95,7 @@ interface TrelloAttachmentRaw {
   id: string;
   name: string;
   url: string;
+  mimeType?: string | null;
 }
 
 interface TrelloCheckItemRaw {
@@ -102,6 +120,7 @@ interface TrelloCardRaw {
   desc: string;
   shortUrl: string;
   url: string;
+  idAttachmentCover?: string | null;
   idList: string;
   labels: TrelloLabel[];
   idMembers: string[];
@@ -170,6 +189,43 @@ function getDueCategory(
 
 function normalizeName(value: string): string {
   return value.trim().toLowerCase();
+}
+
+function normalizeToken(value: string): string {
+  return normalizeName(value).normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+}
+
+function isUndefinedLabel(label: TrelloLabel): boolean {
+  const normalized = normalizeToken(label.name);
+  return UNDEFINED_LABEL_HINTS.some((hint) => normalized.includes(hint));
+}
+
+function looksImageAttachment(attachment: TrelloAttachmentRaw): boolean {
+  if (attachment.mimeType?.startsWith("image/")) {
+    return true;
+  }
+
+  const candidate = `${attachment.name} ${attachment.url}`.toLowerCase();
+  return /\.(png|jpe?g|gif|webp|avif|bmp|svg)(?:\?|$)/i.test(candidate);
+}
+
+function pickCoverImageUrl(card: TrelloCardRaw): string | null {
+  const attachments = card.attachments ?? [];
+  if (card.idAttachmentCover) {
+    const coverAttachment = attachments.find(
+      (attachment) => attachment.id === card.idAttachmentCover,
+    );
+    if (coverAttachment && looksImageAttachment(coverAttachment)) {
+      return coverAttachment.url;
+    }
+  }
+
+  const firstImage = attachments.find((attachment) => looksImageAttachment(attachment));
+  return firstImage?.url ?? null;
+}
+
+function uniqueNonEmpty(values: string[]): string[] {
+  return [...new Set(values.map((value) => value.trim()).filter((value) => value.length > 0))];
 }
 
 function looksWorkflowList(listName: string): boolean {
@@ -316,6 +372,36 @@ function normalizeCustomFields(
   });
 }
 
+function extractDesigners(
+  members: TrelloMemberRaw[],
+  customFields: TrelloCustomFieldValue[],
+): string[] {
+  const memberNames = members
+    .map((member) => member.fullName || member.username)
+    .filter((value) => value && value.trim().length > 0);
+
+  const customFieldDesigners = customFields
+    .filter((field) => {
+      const normalizedName = normalizeToken(field.fieldName);
+      return DESIGNER_FIELD_HINTS.some((hint) => normalizedName.includes(hint));
+    })
+    .map((field) => field.value)
+    .flatMap((value) => {
+      if (typeof value === "string") {
+        return value
+          .split(/[;,/|]/g)
+          .map((part) => part.trim())
+          .filter((part) => part.length > 0);
+      }
+      if (typeof value === "number" || typeof value === "boolean") {
+        return [String(value)];
+      }
+      return [];
+    });
+
+  return uniqueNonEmpty([...memberNames, ...customFieldDesigners]);
+}
+
 function resolveCityFromCard(
   card: TrelloCardRaw,
   mode: CityResolutionMode,
@@ -416,6 +502,9 @@ function computeStats(designs: TrelloDesign[]): DashboardStats {
       if (design.dueCategory === "noDue") {
         accumulator.noDueDesigns += 1;
       }
+      if (design.isUndefined) {
+        accumulator.undefinedDesigns += 1;
+      }
       return accumulator;
     },
     {
@@ -423,8 +512,38 @@ function computeStats(designs: TrelloDesign[]): DashboardStats {
       overdueDesigns: 0,
       upcomingDesigns: 0,
       noDueDesigns: 0,
+      undefinedDesigns: 0,
     },
   );
+}
+
+function computeLabelCounters(designs: TrelloDesign[]): LabelCounter[] {
+  const counters = new Map<string, LabelCounter>();
+
+  for (const design of designs) {
+    for (const label of design.labels) {
+      const key = label.id || `${normalizeToken(label.name)}|${label.color ?? "none"}`;
+      const current = counters.get(key);
+      if (current) {
+        current.count += 1;
+        continue;
+      }
+
+      counters.set(key, {
+        key,
+        name: label.name?.trim() || "Sin nombre",
+        color: label.color ?? null,
+        count: 1,
+      });
+    }
+  }
+
+  return [...counters.values()].sort((left, right) => {
+    if (left.count !== right.count) {
+      return right.count - left.count;
+    }
+    return left.name.localeCompare(right.name);
+  });
 }
 
 async function fetchDashboardData(): Promise<TrelloDashboardData> {
@@ -439,11 +558,11 @@ async function fetchDashboardData(): Promise<TrelloDashboardData> {
     trelloFetch<TrelloCardRaw[]>(`/boards/${env.TRELLO_BOARD_ID}/cards`, {
       filter: "open",
       fields:
-        "id,name,desc,shortUrl,url,idList,labels,idMembers,due,dueComplete,dateLastActivity",
+        "id,name,desc,shortUrl,url,idList,idAttachmentCover,labels,idMembers,due,dueComplete,dateLastActivity",
       members: "true",
       member_fields: "fullName,username",
       attachments: "true",
-      attachment_fields: "id,name,url",
+      attachment_fields: "id,name,url,mimeType",
       checklists: "all",
       checklist_fields: "id,name",
       checkItem_fields: "id,name,state,due,dueComplete,pos,idMember",
@@ -475,6 +594,13 @@ async function fetchDashboardData(): Promise<TrelloDashboardData> {
     );
 
     const createdAt = inferCreationDateFromCardId(card.id);
+    const members =
+      (card.members ?? []).map((member) => ({
+        id: member.id,
+        fullName: member.fullName,
+        username: member.username,
+      })) ?? [];
+    const isUndefined = (card.labels ?? []).some((label) => isUndefinedLabel(label));
 
     return {
       id: card.id,
@@ -482,6 +608,7 @@ async function fetchDashboardData(): Promise<TrelloDashboardData> {
       desc: card.desc ?? "",
       shortUrl: card.shortUrl,
       url: card.url,
+      coverImageUrl: pickCoverImageUrl(card),
       idList: card.idList,
       listName: listById.get(card.idList)?.name ?? "Sin lista",
       city,
@@ -489,13 +616,11 @@ async function fetchDashboardData(): Promise<TrelloDashboardData> {
       due: toIsoOrNull(card.due),
       dueComplete: Boolean(card.dueComplete),
       dueCategory: getDueCategory(card.due, Boolean(card.dueComplete), env.UPCOMING_DAYS),
+      isUndefined,
       labels: card.labels ?? [],
+      designers: extractDesigners(card.members ?? [], customFields),
       idMembers: card.idMembers ?? [],
-      members: (card.members ?? []).map((member) => ({
-        id: member.id,
-        fullName: member.fullName,
-        username: member.username,
-      })),
+      members,
       attachments: (card.attachments ?? []).map((attachment) => ({
         id: attachment.id,
         name: attachment.name,
@@ -547,12 +672,14 @@ async function fetchDashboardData(): Promise<TrelloDashboardData> {
         city,
         source: cityMode,
         designs: orderedDesigns,
+        labelCounters: computeLabelCounters(orderedDesigns),
         ...computeStats(orderedDesigns),
       };
     })
     .sort((left, right) => left.city.localeCompare(right.city));
 
   const totals = computeStats(designs);
+  const labelCounters = computeLabelCounters(designs);
 
   return {
     boardId: env.TRELLO_BOARD_ID,
@@ -561,6 +688,7 @@ async function fetchDashboardData(): Promise<TrelloDashboardData> {
     cityFieldName: cityField?.name ?? env.CITY_FIELD_NAME,
     upcomingDays: env.UPCOMING_DAYS,
     totals,
+    labelCounters,
     cities,
   };
 }

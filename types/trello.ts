@@ -9,6 +9,14 @@ export interface DashboardStats {
   overdueDesigns: number;
   upcomingDesigns: number;
   noDueDesigns: number;
+  undefinedDesigns: number;
+}
+
+export interface LabelCounter {
+  key: string;
+  name: string;
+  color: string | null;
+  count: number;
 }
 
 export interface TrelloLabel {
@@ -61,6 +69,7 @@ export interface TrelloDesign {
   desc: string;
   shortUrl: string;
   url: string;
+  coverImageUrl: string | null;
   idList: string;
   listName: string;
   city: string;
@@ -68,7 +77,9 @@ export interface TrelloDesign {
   due: string | null;
   dueComplete: boolean;
   dueCategory: DueCategory;
+  isUndefined: boolean;
   labels: TrelloLabel[];
+  designers: string[];
   idMembers: string[];
   members: TrelloMember[];
   attachments: TrelloAttachment[];
@@ -82,6 +93,7 @@ export interface TrelloDesign {
 export interface CitySummary extends DashboardStats {
   city: string;
   source: CityResolutionMode;
+  labelCounters: LabelCounter[];
   designs: TrelloDesign[];
 }
 
@@ -92,5 +104,6 @@ export interface TrelloDashboardData {
   cityFieldName: string;
   upcomingDays: number;
   totals: DashboardStats;
+  labelCounters: LabelCounter[];
   cities: CitySummary[];
 }
